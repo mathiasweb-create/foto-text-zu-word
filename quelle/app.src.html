@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Foto-Text zu Word</title>
+<meta name="theme-color" content="#1f5fbf">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Foto-Text">
+<!--__PWA_HEAD__-->
+<style>
+  :root {
+    --bg: #f6f5f2; --card: #ffffff; --text: #1f2328; --muted: #5d6670;
+    --line: #dcd9d2; --accent: #1f5fbf; --accent-text: #ffffff; --ok: #1d7a3e; --err: #b42318; --warn: #9a6700;
+    --quad: #ff3b30;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #16181b; --card: #1f2226; --text: #e8eaed; --muted: #a2a9b1;
+      --line: #343a40; --accent: #6ea2f5; --accent-text: #0b1220; --ok: #5ccf86; --err: #ff8a80; --warn: #e3b341; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 920px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .step { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .step > h2 { font-size: 1.05rem; margin: 0 0 10px; }
+  .drop { border: 2px dashed var(--line); border-radius: 10px; padding: 28px 16px; text-align: center; cursor: pointer; }
+  .drop.over { border-color: var(--accent); }
+  .drop strong { color: var(--accent); }
+  .hint { color: var(--muted); font-size: .9rem; margin: 8px 0 0; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--text);
+    border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  label.opt { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; }
+  label.opt input { margin-top: 5px; }
+  select, input[type=text] { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
+  .item { display: grid; grid-template-columns: 150px 1fr; gap: 14px; border-top: 1px solid var(--line); padding: 14px 0; }
+  .item:first-child { border-top: 0; }
+  .thumb { width: 150px; height: 150px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); display: block; }
+  .name { font-weight: 600; word-break: break-all; }
+  .status { font-size: .9rem; color: var(--muted); }
+  .status.ok { color: var(--ok); } .status.err { color: var(--err); } .status.warn { color: var(--warn); }
+  .tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .tools button { padding: 4px 10px; font-size: .85rem; }
+  .fmt { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .fmt button { padding: 2px 9px; font-size: .85rem; }
+  .editor { min-height: 120px; max-height: 420px; overflow: auto; margin-top: 6px; padding: 10px 12px;
+    background: #fff; color: #111; border: 1px solid var(--line); border-radius: 8px;
+    font: 15px/1.45 Calibri, Carlito, "Segoe UI", sans-serif; }
+  .editor:empty::before { content: "Hier erscheint der erkannte Text. Sie können ihn bearbeiten."; color: #888; }
+  .editor h2 { font-size: 1.3rem; margin: .4em 0 .3em; }
+  .editor h3 { font-size: 1.1rem; margin: .4em 0 .3em; }
+  .editor p { margin: 0 0 .55em; }
+  .editor table { border-collapse: collapse; margin: 0 0 .6em; }
+  .editor mark.fix { background: #fff1a8; color: inherit; border-bottom: 2px solid #d9a400; border-radius: 2px; cursor: pointer; }
+  .editor td { border: 1px solid #999; padding: 2px 6px; }
+  progress { width: 100%; height: 8px; }
+  .empty { color: var(--muted); }
+  /* Ecken-Editor */
+  .modal { position: fixed; inset: 0; background: #111; display: none; flex-direction: column; z-index: 10; }
+  .modal.open { display: flex; }
+  .modal .bar { background: var(--card); padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .modal .bar p { margin: 0; flex: 1 1 300px; font-size: .95rem; }
+  .modal .stage { flex: 1; position: relative; overflow: hidden; touch-action: none; }
+  .modal canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  @media (max-width: 560px) { .item { grid-template-columns: 1fr; } .thumb { width: 100%; height: 200px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Foto-Text zu Word</h1>
+  <p class="sub">Fotos von Texten (auch vom Bildschirm abfotografiert) einfügen, Text erkennen lassen und als Word-Datei speichern. Funktioniert ohne Internet. Die Bilder bleiben auf Ihrem Computer.</p>
+
+  <section class="step">
+    <h2>1. Bilder einfügen</h2>
+    <div class="drop" id="drop" tabindex="0">
+      <strong>Hier klicken</strong>, um Bilder auszuwählen,<br>oder Bilder hierher ziehen, oder mit <strong>Strg+V</strong> einfügen.
+    </div>
+    <input type="file" id="file" accept="image/*" multiple hidden>
+    <p class="hint">Mehrere Bilder sind möglich. Alle landen in einer Word-Datei, in der Reihenfolge der Liste unten.</p>
+  </section>
+
+  <section class="step">
+    <h2>2. Einstellungen</h2>
+    <div class="row">
+      <label for="lang">Sprache des Textes:</label>
+      <select id="lang">
+        <option value="deu" selected>Deutsch</option>
+        <option value="deu+eng">Deutsch und Englisch gemischt</option>
+        <option value="eng">Englisch</option>
+      </select>
+    </div>
+    <label class="opt"><input type="checkbox" id="enhance" checked> <span>Bild aufbereiten (empfohlen bei Fotos vom Bildschirm: glättet Streifenmuster, gleicht Helligkeit aus, erkennt auch helle Schrift auf dunklem Grund)</span></label>
+    <label class="opt"><input type="checkbox" id="autoCorners" checked> <span>Bildschirmrand automatisch suchen und das Bild gerade ziehen</span></label>
+    <label class="opt"><input type="checkbox" id="autoFix" checked> <span>Offensichtliche Erkennungsfehler automatisch korrigieren (mit Wörterbuch, nur eindeutige Fälle; korrigierte Wörter werden gelb markiert, ein Klick darauf stellt das Original wieder her)</span></label>
+    <label class="opt"><input type="checkbox" id="joinLines" checked> <span>Zeilen zu Absätzen zusammenfügen (empfohlen für Fließtext)</span></label>
+    <label class="opt"><input type="checkbox" id="withTitles"> <span>Dateiname als Überschrift über jedem Bild-Text</span></label>
+    <label class="opt"><input type="checkbox" id="pageBreaks"> <span>Jedes Bild auf einer neuen Seite beginnen</span></label>
+  </section>
+
+  <section class="step">
+    <h2>3. Text erkennen und prüfen</h2>
+    <div id="list"><p class="empty">Noch keine Bilder eingefügt.</p></div>
+    <div class="row" style="margin-top:12px">
+      <button class="primary" id="run" disabled>Text erkennen</button>
+      <button id="clear" disabled>Alle entfernen</button>
+    </div>
+    <p class="hint" id="runInfo">Die rote Linie im Vorschaubild zeigt, welcher Bereich gelesen wird. Mit „Ecken anpassen“ können Sie ihn ändern.</p>
+  </section>
+
+  <section class="step">
+    <h2>4. Word-Datei speichern</h2>
+    <div class="row">
+      <label for="docName">Dateiname:</label>
+      <input type="text" id="docName" value="Erkannter Text" style="min-width:220px">
+      <span>.docx</span>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="primary" id="save" disabled>Word-Datei speichern …</button>
+    </div>
+    <p class="hint" id="saveInfo">Sie werden gefragt, in welchem Ordner die Datei gespeichert werden soll.</p>
+  </section>
+</main>
+
+<div class="modal" id="modal">
+  <div class="bar">
+    <p><b>Ecken anpassen:</b> Ziehen Sie die 4 Punkte auf die Ecken des Textbereichs bzw. des Bildschirms. Das Bild wird danach gerade gezogen.</p>
+    <button id="mAuto">Automatisch</button>
+    <button id="mFull">Ganzes Bild</button>
+    <button id="mCancel">Abbrechen</button>
+    <button class="primary" id="mOk">Übernehmen</button>
+  </div>
+  <div class="stage" id="stage"><canvas id="mCanvas"></canvas></div>
+</div>
+
+<script>
+/*__ASSETS__*/
+</script>
+<script>
+/*__KORREKTUR__*/
+</script>
+<script>
+(async () => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- Eingebettete Bausteine entpacken (alles offline) ----------
+  async function unpack(b64, type) {
+    const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const stream = new Blob([bin]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return new Blob([await new Response(stream).arrayBuffer()], { type });
+  }
+  const b64ToBytes = (b64) => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  function loadScript(url) {
+    return new Promise((res, rej) => { const s = document.createElement('script'); s.src = url; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+  }
+  const A = window.__ASSETS__;
+  const urls = {};
+  try {
+    for (const k of ['tesseract', 'docx']) urls[k] = URL.createObjectURL(await unpack(A[k], 'text/javascript'));
+    // Erkennungs-Kern und Worker in eine Datei, damit der Worker nichts nachladen muss
+    urls.worker = URL.createObjectURL(new Blob([await unpack(A.core), '\n;\n', await unpack(A.worker)], { type: 'text/javascript' }));
+    await loadScript(urls.tesseract);
+    await loadScript(urls.docx);
+  } catch (e) {
+    console.error(e);
+    $('runInfo').textContent = 'Das Programm konnte nicht gestartet werden. Bitte öffnen Sie die Datei mit Microsoft Edge oder Google Chrome.';
+    return;
+  }
+  const langData = (code) => ({ code, data: b64ToBytes(A.lang[code]) });
+  let corrector = null;
+  async function getCorrector() {
+    if (!corrector) corrector = makeCorrector(await (await unpack(A.words)).text());
+    return corrector;
+  }
+
+  // ---------- Bildverarbeitung ----------
+  async function loadBitmap(file) {
+    const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    const max = 3200, s = Math.min(1, max / Math.max(bmp.width, bmp.height)); // auch für iPhone-Speicher
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+    c.getContext('2d', { willReadFrequently: true }).drawImage(bmp, 0, 0, c.width, c.height);
+    bmp.close && bmp.close();
+    return c;
+  }
+  function toGray(canvas) {
+    const { width: w, height: h } = canvas;
+    const d = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+    const g = new Float32Array(w * h);
+    for (let i = 0, j = 0; j < g.length; i += 4, j++) g[j] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    return { g, w, h };
+  }
+  // Kastenfilter über Integralbild (schnell, beliebiger Radius)
+  function boxBlur(src, w, h, r) {
+    const W = w + 1, I = new Float64Array(W * (h + 1));
+    for (let y = 0; y < h; y++) { let row = 0; for (let x = 0; x < w; x++) { row += src[y * w + x]; I[(y + 1) * W + x + 1] = I[y * W + x + 1] + row; } }
+    const out = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) {
+      const y0 = Math.max(0, y - r), y1 = Math.min(h, y + r + 1);
+      for (let x = 0; x < w; x++) {
+        const x0 = Math.max(0, x - r), x1 = Math.min(w, x + r + 1);
+        out[y * w + x] = (I[y1 * W + x1] - I[y0 * W + x1] - I[y1 * W + x0] + I[y0 * W + x0]) / ((y1 - y0) * (x1 - x0));
+      }
+    }
+    return out;
+  }
+  // Bildschirmrand suchen: größte helle Fläche, deren Ecken werden genommen.
+  function detectQuad(canvas) {
+    const s = Math.min(1, 400 / Math.max(canvas.width, canvas.height));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(canvas.width * s)); c.height = Math.max(1, Math.round(canvas.height * s));
+    c.getContext('2d').drawImage(canvas, 0, 0, c.width, c.height);
+    const { g, w, h } = toGray(c);
+    const b = boxBlur(g, w, h, 2);
+    // Otsu-Schwelle
+    const hist = new Array(256).fill(0); for (const v of b) hist[Math.min(255, v | 0)]++;
+    let sum = 0; for (let i = 0; i < 256; i++) sum += i * hist[i];
+    let sB = 0, wB = 0, best = 0, th = 128;
+    for (let i = 0; i < 256; i++) { wB += hist[i]; if (!wB) continue; const wF = b.length - wB; if (!wF) break; sB += i * hist[i];
+      const mB = sB / wB, mF = (sum - sB) / wF, v = wB * wF * (mB - mF) ** 2; if (v > best) { best = v; th = i; } }
+    // erst helle Fläche (heller Bildschirm), sonst dunkle Fläche (dunkler Bildschirm vor heller Wand) suchen
+    for (const wantBright of [true, false]) {
+      const q = findRect(wantBright);
+      if (q) return q;
+    }
+    return null;
+    function findRect(wantBright) {
+    const bright = new Uint8Array(w * h); for (let i = 0; i < b.length; i++) bright[i] = (b[i] > th) === wantBright ? 1 : 0;
+    // Löcher (Text) schließen: grob dilatieren
+    const closed = boxBlur(Float32Array.from(bright), w, h, 3);
+    const mask = new Uint8Array(w * h); for (let i = 0; i < mask.length; i++) mask[i] = closed[i] > 0.5 ? 1 : 0;
+    // größte zusammenhängende Fläche
+    const lab = new Int32Array(w * h); let bestLab = 0, bestSize = 0, cur = 0; const stack = [];
+    for (let i = 0; i < mask.length; i++) {
+      if (!mask[i] || lab[i]) continue; cur++; let size = 0; stack.push(i); lab[i] = cur;
+      while (stack.length) { const p = stack.pop(); size++; const x = p % w, y = (p / w) | 0;
+        if (x > 0 && mask[p - 1] && !lab[p - 1]) { lab[p - 1] = cur; stack.push(p - 1); }
+        if (x < w - 1 && mask[p + 1] && !lab[p + 1]) { lab[p + 1] = cur; stack.push(p + 1); }
+        if (y > 0 && mask[p - w] && !lab[p - w]) { lab[p - w] = cur; stack.push(p - w); }
+        if (y < h - 1 && mask[p + w] && !lab[p + w]) { lab[p + w] = cur; stack.push(p + w); } }
+      if (size > bestSize) { bestSize = size; bestLab = cur; }
+    }
+    const frac = bestSize / (w * h);
+    if (frac < 0.15 || frac > 0.95) return null;
+    let tl, tr, br, bl, vtl = Infinity, vtr = -Infinity, vbr = -Infinity, vbl = -Infinity;
+    for (let i = 0; i < lab.length; i++) {
+      if (lab[i] !== bestLab) continue; const x = i % w, y = (i / w) | 0;
+      if (x + y < vtl) { vtl = x + y; tl = [x, y]; }
+      if (x - y > vtr) { vtr = x - y; tr = [x, y]; }
+      if (x + y > vbr) { vbr = x + y; br = [x, y]; }
+      if (y - x > vbl) { vbl = y - x; bl = [x, y]; }
+    }
+    // Ecken direkt am Bildrand: das ist eher der Hintergrund als ein Bildschirm
+    if ([tl, tr, br, bl].filter(([x, y]) => x <= 1 || y <= 1 || x >= w - 2 || y >= h - 2).length >= 2) return null;
+    const q = [tl, tr, br, bl].map(([x, y]) => [x / s, y / s]);
+    // Fläche des Vierecks muss zur hellen Fläche passen, sonst ist es keine rechteckige Fläche
+    const area = Math.abs(q.reduce((a, p, i) => { const n = q[(i + 1) % 4]; return a + p[0] * n[1] - n[0] * p[1]; }, 0) / 2);
+    const ratio = (bestSize / (s * s)) / area;
+    if (ratio < 0.8 || ratio > 1.15) return null;
+    // auch fast ganzes Bild? Dann nichts ändern.
+    const full = canvas.width * canvas.height;
+    if (area > 0.93 * full) return null;
+    return q;
+    }
+  }
+  const fullQuad = (c) => [[0, 0], [c.width, 0], [c.width, c.height], [0, c.height]];
+  // Homographie (Ziel-Rechteck -> Quell-Viereck)
+  function homography(from, to) {
+    const A = [], B = [];
+    for (let i = 0; i < 4; i++) {
+      const [x, y] = from[i], [u, v] = to[i];
+      A.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); B.push(u);
+      A.push([0, 0, 0, x, y, 1, -v * x, -v * y]); B.push(v);
+    }
+    for (let c = 0; c < 8; c++) {
+      let p = c; for (let r = c + 1; r < 8; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
+      [A[c], A[p]] = [A[p], A[c]]; [B[c], B[p]] = [B[p], B[c]];
+      for (let r = 0; r < 8; r++) { if (r === c) continue; const f = A[r][c] / A[c][c];
+        for (let k = c; k < 8; k++) A[r][k] -= f * A[c][k]; B[r] -= f * B[c]; }
+    }
+    return B.map((b, i) => b / A[i][i]).concat(1);
+  }
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  // Komplette Aufbereitung -> Canvas für die Texterkennung
+  function preprocess(src, quad, enhance, opts = {}) {
+    let { g, w, h } = toGray(src);
+    if (enhance) {
+      // Moiré (Streifenmuster vom Bildschirm) glätten
+      const r = opts.blur ?? 1;
+      if (r > 0)
+        g = boxBlur(boxBlur(g, w, h, r), w, h, r);
+    }
+    const q = quad || [[0, 0], [w, 0], [w, h], [0, h]];
+    let W = Math.max(dist(q[0], q[1]), dist(q[3], q[2])), H = Math.max(dist(q[0], q[3]), dist(q[1], q[2]));
+    const scale = Math.min(3200 / Math.max(W, H), Math.max(1, (opts.target || 2000) / W));
+    W = Math.round(W * scale); H = Math.round(H * scale);
+    const m = homography([[0, 0], [W, 0], [W, H], [0, H]], q);
+    const out = new Float32Array(W * H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const z = m[6] * x + m[7] * y + 1, sx = (m[0] * x + m[1] * y + m[2]) / z, sy = (m[3] * x + m[4] * y + m[5]) / z;
+      const x0 = Math.floor(sx), y0 = Math.floor(sy);
+      if (x0 < 0 || y0 < 0 || x0 >= w - 1 || y0 >= h - 1) { out[y * W + x] = 255; continue; }
+      const fx = sx - x0, fy = sy - y0, i = y0 * w + x0;
+      out[y * W + x] = (g[i] * (1 - fx) + g[i + 1] * fx) * (1 - fy) + (g[i + w] * (1 - fx) + g[i + w + 1] * fx) * fy;
+    }
+    let res = out;
+    if (enhance) {
+      // Helle Schrift auf dunklem Grund? Dann ist der Hintergrund dunkel: Bild umkehren.
+      const smp = []; for (let i = 0; i < res.length; i += 7) smp.push(res[i]); smp.sort((a, b) => a - b);
+      const pc = (q) => smp[Math.floor(q * (smp.length - 1))];
+      if (pc(0.995) - pc(0.5) > pc(0.5) - pc(0.005)) for (let i = 0; i < res.length; i++) res[i] = 255 - res[i];
+      // Helligkeit ausgleichen: Hintergrund je Kachel (heller Anteil) schätzen und herausrechnen
+      const T = Math.max(40, Math.round(Math.max(W, H) / 30)), nx = Math.ceil(W / T), ny = Math.ceil(H / T);
+      const bgT = new Float32Array(nx * ny);
+      for (let ty = 0; ty < ny; ty++) for (let tx = 0; tx < nx; tx++) {
+        const v = [];
+        for (let y = ty * T; y < Math.min(H, ty * T + T); y += 3) for (let x = tx * T; x < Math.min(W, tx * T + T); x += 3) v.push(res[y * W + x]);
+        v.sort((a, b) => a - b); bgT[ty * nx + tx] = v[Math.floor(v.length * 0.85)];
+      }
+      const bgS = boxBlur(bgT, nx, ny, 1);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const gx = Math.min(nx - 1, Math.max(0, x / T - 0.5)), gy = Math.min(ny - 1, Math.max(0, y / T - 0.5));
+        const x0 = Math.floor(gx), y0 = Math.floor(gy), x1 = Math.min(nx - 1, x0 + 1), y1 = Math.min(ny - 1, y0 + 1), fx = gx - x0, fy = gy - y0;
+        const b = (bgS[y0 * nx + x0] * (1 - fx) + bgS[y0 * nx + x1] * fx) * (1 - fy) + (bgS[y1 * nx + x0] * (1 - fx) + bgS[y1 * nx + x1] * fx) * fy;
+        res[y * W + x] = Math.min(255, 245 * res[y * W + x] / Math.max(1, b));
+      }
+      // Kontrast strecken
+      const hist = new Array(256).fill(0); for (const v of res) hist[Math.max(0, Math.min(255, v | 0))]++;
+      let lo = 0, acc = 0; while (lo < 255 && (acc += hist[lo]) < res.length * 0.005) lo++;
+      const hi = 225;
+      for (let i = 0; i < res.length; i++) res[i] = Math.max(0, Math.min(255, (res[i] - lo) * 255 / Math.max(1, hi - lo)));
+    }
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const ctx = c.getContext('2d'), img = ctx.createImageData(W, H);
+    for (let i = 0, j = 0; j < res.length; i += 4, j++) { const v = res[j]; img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255; }
+    ctx.putImageData(img, 0, 0);
+    return c;
+  }
+
+  // ---------- Struktur aus dem Erkennungsergebnis ----------
+  const esc = (s) => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  function median(a) { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; }
+  function structure(data, join, corr) {
+    let fixes = 0;
+    const paras = [];
+    for (const b of data.blocks || []) for (const p of b.paragraphs || []) {
+      // Störungen (Bildrand, Streifen) aussortieren: unsichere Zeilen ohne richtige Wörter weglassen
+      const lines = (p.lines || []).filter(l => {
+        const t = l.text.trim(), letters = (t.match(/\p{L}/gu) || []).length;
+        if (letters < 2 && !/\d/.test(t)) return false;
+        if (l.confidence >= 60) return true;
+        const words = (l.words || []).filter(w => w.confidence >= 60 && (w.text.match(/\p{L}/gu) || []).length >= 3);
+        return l.confidence >= 35 && words.length >= 2 && letters / t.replace(/\s/g, '').length > 0.7;
+      });
+      if (lines.length) paras.push(lines);
+    }
+    const allLines = paras.flat();
+    if (!allLines.length) return { html: '', fixes: 0 };
+    // Schriftgröße je Zeile: Median der Buchstabenhöhe der Wörter
+    const lh = (l) => median((l.words || []).map(w => w.bbox.y1 - w.bbox.y0)) || (l.bbox.y1 - l.bbox.y0);
+    const bodyH = median(allLines.map(lh));
+    const left = Math.min(...allLines.map(l => l.bbox.x0)), right = Math.max(...allLines.map(l => l.bbox.x1));
+    const mid = (left + right) / 2, span = right - left;
+    // Tesseract fasst manchmal Überschrift und Text zu einem Absatz zusammen -> an Größensprüngen trennen
+    const split = [];
+    for (const lines of paras) {
+      let cur = [lines[0]];
+      for (let i = 1; i < lines.length; i++) {
+        const a = lh(lines[i - 1]), b = lh(lines[i]);
+        const big = (x) => x > bodyH * 1.3;
+        const gap = lines[i].bbox.y0 - lines[i - 1].bbox.y1;
+        if (big(a) !== big(b) || gap > bodyH * 1.2) { split.push(cur); cur = []; }
+        cur.push(lines[i]);
+      }
+      split.push(cur);
+    }
+    const html = [];
+    for (const lines of split) {
+      const h = median(lines.map(lh));
+      const centered = span > 0 && lines.every(l => {
+        const c = (l.bbox.x0 + l.bbox.x1) / 2, wdt = l.bbox.x1 - l.bbox.x0;
+        return Math.abs(c - mid) < span * 0.04 && wdt < span * 0.8 && l.bbox.x0 - left > span * 0.08;
+      });
+      const texts = lines.map(l => l.text.replace(/\s+$/, ''));
+      let plain = join
+        ? texts.join('\n').replace(/(\p{Ll})[-‐­]\n(\p{Ll})/gu, '$1$2').replace(/\n/g, ' ').replace(/ {2,}/g, ' ').trim()
+        : texts.join('\n');
+      let content;
+      if (corr) {
+        // Sicherheit je Wort, damit sicher gelesene Wörter nie verändert werden
+        const confMap = new Map();
+        for (const l of lines) for (const w of l.words || []) {
+          const k = w.text.replace(/^[^\p{L}\d]+|[^\p{L}\d]+$/gu, '');
+          confMap.set(k, Math.min(confMap.get(k) ?? 100, w.confidence));
+        }
+        const parts = corr.fixText(corr.tidyPunct(plain), (t) => confMap.get(t));
+        content = parts.map(p => {
+          if (!p.orig) return esc(p.text);
+          fixes++;
+          return `<mark class="fix" data-orig="${esc(p.orig).replace(/"/g, '&quot;')}" title="Automatisch korrigiert. Erkannt war: ${esc(p.orig)}. Klicken stellt das Original wieder her.">${esc(p.text)}</mark>`;
+        }).join('');
+      } else content = esc(plain.replace(/ı/g, 'i'));
+      content = content.replace(/\n/g, '<br>');
+      const style = centered ? ' style="text-align: center;"' : '';
+      let tag = 'p';
+      if (lines.length <= 3 && h > bodyH * 1.6) tag = 'h2';
+      else if (lines.length <= 3 && h > bodyH * 1.25) tag = 'h3';
+      html.push(`<${tag}${style}>${content}</${tag}>`);
+    }
+    return { html: html.join('\n'), fixes };
+  }
+
+  // ---------- Liste der Bilder ----------
+  const items = [];
+  let nextId = 1, busy = false;
+  const list = $('list'), drop = $('drop'), fileInput = $('file');
+
+  async function addFiles(files) {
+    for (const f of files) {
+      if (!f.type.startsWith('image/')) continue;
+      const name = f.name && f.name !== 'image.png' ? f.name : `Eingefügtes Bild ${nextId}.png`;
+      const it = { id: nextId++, file: f, name, html: '', status: 'Bereit', cls: '', quad: null, quadSet: false };
+      try {
+        it.canvas = await loadBitmap(f);
+        if ($('autoCorners').checked) { it.quad = detectQuad(it.canvas); }
+        it.status = it.quad ? 'Bereit. Bildschirmrand gefunden (rote Linie).' : 'Bereit.';
+      } catch (e) { console.error(e); it.status = 'Dieses Bild konnte nicht geöffnet werden.'; it.cls = 'err'; }
+      items.push(it);
+    }
+    render();
+  }
+
+  function drawThumb(it, cv) {
+    const ctx = cv.getContext('2d'), S = 300; cv.width = S; cv.height = S;
+    ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg'); ctx.fillRect(0, 0, S, S);
+    if (!it.canvas) return;
+    const s = Math.min(S / it.canvas.width, S / it.canvas.height), ox = (S - it.canvas.width * s) / 2, oy = (S - it.canvas.height * s) / 2;
+    ctx.drawImage(it.canvas, ox, oy, it.canvas.width * s, it.canvas.height * s);
+    const q = it.quad || fullQuad(it.canvas);
+    ctx.strokeStyle = '#ff3b30'; ctx.lineWidth = 3; ctx.beginPath();
+    q.forEach(([x, y], i) => ctx[i ? 'lineTo' : 'moveTo'](ox + x * s, oy + y * s)); ctx.closePath(); ctx.stroke();
+  }
+
+  function render() {
+    list.innerHTML = '';
+    if (!items.length) list.innerHTML = '<p class="empty">Noch keine Bilder eingefügt.</p>';
+    items.forEach((it, i) => {
+      const el = document.createElement('div');
+      el.className = 'item';
+      el.innerHTML = `<div><canvas class="thumb"></canvas></div>
+        <div><div class="name"></div><div class="status ${it.cls}"></div>
+        <progress max="1" value="0" hidden></progress>
+        <div class="tools"><button data-a="corners">Ecken anpassen</button><button data-a="up">↑ Nach oben</button><button data-a="down">↓ Nach unten</button><button data-a="del">Entfernen</button><button data-a="prep" ${it.prepUrl ? '' : 'hidden'}>Aufbereitetes Bild ansehen</button></div>
+        <div class="fmt" ${it.html ? '' : 'hidden'}>
+          <button data-f="h2" title="Große Überschrift">Überschrift</button><button data-f="h3" title="Kleine Überschrift">Unterüberschrift</button><button data-f="p">Normaler Text</button>
+          <button data-f="bold"><b>F</b>ett</button><button data-f="underline"><u>U</u>nterstrichen</button><button data-f="italic"><i>K</i>ursiv</button>
+          <button data-f="justifyCenter">Zentriert</button><button data-f="justifyLeft">Links</button></div>
+        <div class="editor" contenteditable="true" spellcheck="true" lang="de"></div></div>`;
+      drawThumb(it, el.querySelector('.thumb'));
+      el.querySelector('.name').textContent = `${i + 1}. ${it.name}`;
+      el.querySelector('.status').textContent = it.status;
+      const ed = el.querySelector('.editor');
+      ed.innerHTML = it.html;
+      ed.addEventListener('input', () => { it.html = ed.innerHTML; updateButtons(); });
+      ed.addEventListener('click', (e) => {
+        const mk = e.target.closest && e.target.closest('mark.fix');
+        if (!mk) return;
+        mk.replaceWith(document.createTextNode(mk.dataset.orig));
+        it.html = ed.innerHTML;
+      });
+      el.querySelectorAll('.fmt button').forEach(b => b.addEventListener('mousedown', e => {
+        e.preventDefault(); const f = b.dataset.f;
+        if (['h2', 'h3', 'p'].includes(f)) document.execCommand('formatBlock', false, f); else document.execCommand(f);
+        it.html = ed.innerHTML;
+      }));
+      el.querySelectorAll('.tools button').forEach(b => b.addEventListener('click', () => {
+        if (busy) return;
+        const a = b.dataset.a;
+        if (a === 'corners') return openCorners(it);
+        if (a === 'prep') return window.open(it.prepUrl, '_blank');
+        if (a === 'del') items.splice(i, 1);
+        if (a === 'up' && i > 0) [items[i - 1], items[i]] = [items[i], items[i - 1]];
+        if (a === 'down' && i < items.length - 1) [items[i + 1], items[i]] = [items[i], items[i + 1]];
+        render();
+      }));
+      it.el = el;
+      list.appendChild(el);
+    });
+    updateButtons();
+  }
+
+  function updateButtons() {
+    $('run').disabled = busy || !items.length;
+    $('clear').disabled = busy || !items.length;
+    $('save').disabled = busy || !items.some(it => it.html && it.html.replace(/<[^>]*>/g, '').trim());
+  }
+  function setStatus(it, text, cls = '') {
+    it.status = text; it.cls = cls;
+    const s = it.el && it.el.querySelector('.status');
+    if (s) { s.textContent = text; s.className = 'status ' + cls; }
+  }
+
+  // ---------- Ecken-Editor ----------
+  let mItem = null, mQuad = null, mView = null, mDrag = -1;
+  const mCanvas = $('mCanvas');
+  function openCorners(it) {
+    if (!it.canvas) return;
+    mItem = it; mQuad = (it.quad || fullQuad(it.canvas)).map(p => [...p]);
+    $('modal').classList.add('open'); drawCorners();
+  }
+  function drawCorners() {
+    const st = $('stage'), dpr = window.devicePixelRatio || 1;
+    mCanvas.width = st.clientWidth * dpr; mCanvas.height = st.clientHeight * dpr;
+    const ctx = mCanvas.getContext('2d'), c = mItem.canvas, pad = 30 * dpr;
+    const s = Math.min((mCanvas.width - 2 * pad) / c.width, (mCanvas.height - 2 * pad) / c.height);
+    const ox = (mCanvas.width - c.width * s) / 2, oy = (mCanvas.height - c.height * s) / 2;
+    mView = { s, ox, oy, dpr };
+    ctx.clearRect(0, 0, mCanvas.width, mCanvas.height);
+    ctx.drawImage(c, ox, oy, c.width * s, c.height * s);
+    ctx.strokeStyle = '#ff3b30'; ctx.lineWidth = 3 * dpr; ctx.beginPath();
+    mQuad.forEach(([x, y], i) => ctx[i ? 'lineTo' : 'moveTo'](ox + x * s, oy + y * s)); ctx.closePath(); ctx.stroke();
+    mQuad.forEach(([x, y]) => { ctx.beginPath(); ctx.arc(ox + x * s, oy + y * s, 12 * dpr, 0, 7);
+      ctx.fillStyle = 'rgba(255,59,48,.35)'; ctx.fill(); ctx.lineWidth = 3 * dpr; ctx.stroke(); });
+  }
+  const toImg = (e) => { const r = mCanvas.getBoundingClientRect(), d = mView.dpr;
+    return [((e.clientX - r.left) * d - mView.ox) / mView.s, ((e.clientY - r.top) * d - mView.oy) / mView.s]; };
+  mCanvas.addEventListener('pointerdown', e => {
+    const p = toImg(e); let best = -1, bd = 40 * mView.dpr / mView.s;
+    mQuad.forEach((q, i) => { const d = dist(p, q); if (d < bd) { bd = d; best = i; } });
+    mDrag = best; if (best >= 0) mCanvas.setPointerCapture(e.pointerId);
+  });
+  mCanvas.addEventListener('pointermove', e => {
+    if (mDrag < 0) return; const [x, y] = toImg(e), c = mItem.canvas;
+    mQuad[mDrag] = [Math.max(0, Math.min(c.width, x)), Math.max(0, Math.min(c.height, y))]; drawCorners();
+  });
+  mCanvas.addEventListener('pointerup', () => { mDrag = -1; });
+  window.addEventListener('resize', () => { if ($('modal').classList.contains('open')) drawCorners(); });
+  $('mAuto').onclick = () => { const q = detectQuad(mItem.canvas); if (q) { mQuad = q; drawCorners(); } else alert('Es wurde kein Bildschirmrand gefunden. Bitte ziehen Sie die Punkte von Hand.'); };
+  $('mFull').onclick = () => { mQuad = fullQuad(mItem.canvas); drawCorners(); };
+  $('mCancel').onclick = () => $('modal').classList.remove('open');
+  $('mOk').onclick = () => { mItem.quad = mQuad; $('modal').classList.remove('open'); setStatus(mItem, 'Bereit. Bereich angepasst.'); drawThumb(mItem, mItem.el.querySelector('.thumb')); };
+
+  // ---------- Texterkennung ----------
+  async function runOcr() {
+    if (busy || !items.length) return;
+    busy = true; updateButtons();
+    const lang = $('lang').value, join = $('joinLines').checked, enhance = $('enhance').checked;
+    let current = null, worker;
+    $('runInfo').textContent = 'Texterkennung wird gestartet …';
+    try {
+      const corr = $('autoFix').checked && lang !== 'eng' ? await getCorrector() : null;
+      worker = await Tesseract.createWorker(lang.split('+').map(langData), 1, {
+        workerPath: urls.worker, workerBlobURL: false,
+        cacheMethod: 'none', gzip: true,
+        logger: m => {
+          if (!current || !current.el) return;
+          const p = current.el.querySelector('progress');
+          if (m.status === 'recognizing text') { p.hidden = false; p.value = m.progress; }
+        }
+      });
+      await worker.setParameters({ preserve_interword_spaces: '1' });
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i]; current = it;
+        if (!it.canvas) continue;
+        $('runInfo').textContent = `Bild ${i + 1} von ${items.length} wird gelesen …`;
+        setStatus(it, 'Bild wird aufbereitet …');
+        await new Promise(r => setTimeout(r, 30));
+        try {
+          // Bei Bildschirmfotos hängt die beste Glättung vom Foto ab: bei Bedarf eine zweite Stufe probieren
+          let best = null;
+          for (const blur of enhance ? [1, 2] : [0]) {
+            const prep = preprocess(it.canvas, it.quad, enhance, { blur });
+            setStatus(it, best ? 'Wird mit stärkerer Glättung erneut gelesen …' : 'Wird gelesen …');
+            const { data } = await worker.recognize(prep, {}, { text: true, blocks: true });
+            if (!best || data.confidence > best.data.confidence) best = { data, prep };
+            if (best.data.confidence >= 85) break;
+          }
+          const { data, prep } = best;
+          if (it.prepUrl) URL.revokeObjectURL(it.prepUrl);
+          it.prepUrl = URL.createObjectURL(await new Promise(r => prep.toBlob(r, 'image/png')));
+          const res = structure(data, join, corr);
+          it.html = res.html;
+          const conf = Math.round(data.confidence || 0);
+          const fx = res.fixes ? ` ${res.fixes} ${res.fixes === 1 ? 'Wort' : 'Wörter'} automatisch korrigiert (gelb markiert).` : '';
+          if (!it.html) setStatus(it, 'Kein Text gefunden. Ist das Foto scharf? Passt die rote Linie?', 'err');
+          else setStatus(it, `Fertig (Sicherheit der Erkennung: ca. ${conf} %).${fx}${conf < 70 ? ' Bitte genau prüfen.' : ''}`, conf < 70 ? 'warn' : 'ok');
+        } catch (e) {
+          console.error(e); setStatus(it, 'Fehler beim Lesen dieses Bildes.', 'err');
+        }
+        const keep = it.status, kc = it.cls; render(); setStatus(items[i], keep, kc);
+      }
+      $('runInfo').textContent = 'Fertig. Bitte den Text prüfen. Sie können ihn direkt bearbeiten und mit den Knöpfen formatieren.';
+    } catch (e) {
+      console.error(e);
+      $('runInfo').textContent = 'Die Texterkennung konnte nicht starten. Bitte die Seite neu laden. Am besten Microsoft Edge oder Google Chrome verwenden.';
+    } finally {
+      if (worker) await worker.terminate();
+      busy = false; updateButtons();
+    }
+  }
+
+  // ---------- Word-Datei ----------
+  function htmlToDocx(html, D) {
+    const box = document.createElement('div'); box.innerHTML = html;
+    const out = [];
+    const runsOf = (node, fmt) => {
+      const runs = [];
+      node.childNodes.forEach(n => {
+        if (n.nodeType === 3) { if (n.nodeValue) runs.push(new D.TextRun({ text: n.nodeValue.replace(/ /g, ' '), ...fmt })); return; }
+        if (n.nodeType !== 1) return;
+        const t = n.tagName, st = n.style || {};
+        if (t === 'BR') { runs.push(new D.TextRun({ text: '', break: 1 })); return; }
+        const f = { ...fmt };
+        if (t === 'B' || t === 'STRONG' || st.fontWeight === 'bold' || +st.fontWeight >= 600) f.bold = true;
+        if (t === 'I' || t === 'EM' || st.fontStyle === 'italic') f.italics = true;
+        if (t === 'U' || (st.textDecoration || '').includes('underline') || (st.textDecorationLine || '').includes('underline')) f.underline = {};
+        runs.push(...runsOf(n, f));
+      });
+      return runs;
+    };
+    const blockOf = (n) => {
+      const t = n.tagName || '';
+      const align = (n.style && n.style.textAlign) || n.getAttribute && n.getAttribute('align');
+      const alignment = align === 'center' ? D.AlignmentType.CENTER : align === 'right' ? D.AlignmentType.RIGHT : undefined;
+      const heading = t === 'H1' || t === 'H2' ? D.HeadingLevel.HEADING_1 : t === 'H3' ? D.HeadingLevel.HEADING_2 : undefined;
+      const children = n.nodeType === 3 ? [new D.TextRun(n.nodeValue)] : runsOf(n, {});
+      return new D.Paragraph({ children, heading, alignment, spacing: { after: 160 } });
+    };
+    box.childNodes.forEach(n => {
+      if (n.nodeType === 3) { if (n.nodeValue.trim()) out.push(blockOf(n)); return; }
+      if (n.nodeType !== 1) return;
+      if (n.tagName === 'DIV' && n.querySelector('p,h1,h2,h3,div')) { out.push(...htmlToDocx(n.innerHTML, D)); return; }
+      out.push(blockOf(n));
+    });
+    return out;
+  }
+
+  async function saveDocx() {
+    const D = window.docx;
+    const withTitles = $('withTitles').checked, pageBreaks = $('pageBreaks').checked;
+    const children = [];
+    items.filter(it => it.html && it.html.replace(/<[^>]*>/g, '').trim()).forEach((it, idx) => {
+      if (pageBreaks && idx > 0) children.push(new D.Paragraph({ children: [new D.PageBreak()] }));
+      else if (idx > 0) children.push(new D.Paragraph({ text: '' }));
+      if (withTitles) children.push(new D.Paragraph({ text: it.name.replace(/\.[^.]+$/, ''), heading: D.HeadingLevel.HEADING_1 }));
+      children.push(...htmlToDocx(it.html, D));
+    });
+    const doc = new D.Document({
+      styles: { default: { document: { run: { font: 'Calibri', size: 24 } } } },
+      sections: [{ children }]
+    });
+    const blob = await D.Packer.toBlob(doc);
+    const name = ($('docName').value.trim() || 'Erkannter Text').replace(/[\\/:*?"<>|]/g, '_') + '.docx';
+    if (window.showSaveFilePicker) {
+      try {
+        const h = await window.showSaveFilePicker({ suggestedName: name, startIn: 'documents',
+          types: [{ description: 'Word-Dokument', accept: { 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'] } }] });
+        const w = await h.createWritable(); await w.write(blob); await w.close();
+        $('saveInfo').textContent = `Gespeichert als „${h.name}“.`;
+        return;
+      } catch (e) {
+        if (e.name === 'AbortError') return; // Benutzer hat abgebrochen
+        console.warn(e);
+      }
+    }
+    // iPhone/iPad: Teilen-Menü („In Dateien sichern“, Word, Mail …)
+    const file = new File([blob], name, { type: blob.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    if (navigator.canShare && navigator.share && /iPad|iPhone|iPod|Android|Macintosh/.test(navigator.userAgent) && 'ontouchend' in document) {
+      try {
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: name });
+          $('saveInfo').textContent = `„${name}“ wurde weitergegeben.`;
+          return;
+        }
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+        console.warn(e);
+      }
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    $('saveInfo').textContent = `„${name}“ wurde in Ihren Download-Ordner gespeichert.`;
+  }
+
+  drop.addEventListener('click', () => fileInput.click());
+  drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
+  fileInput.addEventListener('change', () => { addFiles([...fileInput.files]); fileInput.value = ''; });
+  ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => addFiles([...e.dataTransfer.files]));
+  document.addEventListener('paste', e => {
+    if (e.target.closest && e.target.closest('.editor')) return;
+    const files = [...(e.clipboardData?.items || [])].filter(x => x.kind === 'file').map(x => x.getAsFile()).filter(Boolean);
+    if (files.length) { e.preventDefault(); addFiles(files); }
+  });
+  $('run').addEventListener('click', runOcr);
+  $('clear').addEventListener('click', () => { items.length = 0; render(); });
+  $('save').addEventListener('click', saveDocx);
+  // Offline-Speicher für die Web-App (nur wenn über eine Internetadresse geöffnet)
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost') && document.querySelector('link[rel=manifest]')) {
+    navigator.serviceWorker.register('sw.js').catch(e => console.warn(e));
+  }
+  if (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+    $('saveInfo').textContent = 'Danach erscheint das Teilen-Menü. Dort „In Dateien sichern“ wählen oder direkt in Word öffnen.';
+    document.querySelector('.drop').innerHTML = '<strong>Hier tippen</strong>, um Fotos auszuwählen oder ein Foto aufzunehmen.';
+  }
+  window.__app = { items, preprocess, detectQuad, structure, langData, urls, getCorrector };
+})();
+</script>
+</body>
+</html>
